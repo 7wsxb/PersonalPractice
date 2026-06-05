@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 struct UserService {
     
@@ -15,16 +16,68 @@ struct UserService {
         self.repository = repository
     }
     
+    func loadCurrentUser() -> AnyPublisher<User, Error> {
+        repository.loadCurrentUser()
+            .flatMap { cachedUser -> AnyPublisher<User, Error> in
+                if let cachedUser = cachedUser {
+                    return Just(cachedUser)
+                        .setFailureType(to: Error.self)
+                        .eraseToAnyPublisher()
+                }
+                return repository.fetchUsers()
+                    .map { $0[7] }
+                    .flatMap { user in
+                        repository.saveUser(user)
+                            .map { user }
+                            .eraseToAnyPublisher()
+                    }
+                    .eraseToAnyPublisher()
+            }
+            .eraseToAnyPublisher()
+    }
+    
+    func updateUser(_ user: User) -> AnyPublisher<Void, Error> {
+        repository.saveUser(user)
+    }
+}
+
+// MARK: - Async/await backward compatibility
+extension UserService {
     func loadCurrentUser() async throws -> User {
-        if let currentUser = try await repository.loadCurrentUser() {
-            return currentUser
+        try await withCheckedThrowingContinuation { continuation in
+            var cancellable: AnyCancellable?
+            cancellable = loadCurrentUser()
+                .sink(
+                    receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            continuation.resume(throwing: error)
+                        }
+                        _ = cancellable
+                    },
+                    receiveValue: { user in
+                        continuation.resume(returning: user)
+                        _ = cancellable
+                    }
+                )
         }
-        let user = try await repository.fetchUsers()[7]
-        try await repository.saveUser(user)
-        return user
     }
     
     func updateUser(_ user: User) async throws {
-        try await repository.saveUser(user)
+        _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            var cancellable: AnyCancellable?
+            cancellable = updateUser(user)
+                .sink(
+                    receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            continuation.resume(throwing: error)
+                        }
+                        _ = cancellable
+                    },
+                    receiveValue: {
+                        continuation.resume()
+                        _ = cancellable
+                    }
+                )
+        }
     }
 }

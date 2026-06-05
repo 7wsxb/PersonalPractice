@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 struct ProductRepository: ProductRepositoryProtocol {
     private let baseURL: String
@@ -14,12 +15,36 @@ struct ProductRepository: ProductRepositoryProtocol {
         self.baseURL = baseURL
     }
     
-    func getProducts() async throws -> [Product] {
-        guard let url = URL(string: ("\(baseURL)/products")) else {
-            throw URLError(.badURL)
+    func getProducts() -> AnyPublisher<[Product], Error> {
+        guard let url = URL(string: "\(baseURL)/products") else {
+            return Fail(error: URLError(.badURL)).eraseToAnyPublisher()
         }
-        let (data, _) = try await URLSession.shared.data(from: url)
-        let response = try JSONDecoder().decode(ProductArray.self, from: data)
-        return response.products
+        return URLSession.shared.dataTaskPublisher(for: url)
+            .map(\.data)
+            .decode(type: ProductArray.self, decoder: JSONDecoder())
+            .map(\.products)
+            .eraseToAnyPublisher()
+    }
+}
+
+// MARK: - Async/await backward compatibility
+extension ProductRepository {
+    func getProducts() async throws -> [Product] {
+        try await withCheckedThrowingContinuation { continuation in
+            var cancellable: AnyCancellable?
+            cancellable = getProducts()
+                .sink(
+                    receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            continuation.resume(throwing: error)
+                        }
+                        _ = cancellable
+                    },
+                    receiveValue: { products in
+                        continuation.resume(returning: products)
+                        _ = cancellable
+                    }
+                )
+        }
     }
 }

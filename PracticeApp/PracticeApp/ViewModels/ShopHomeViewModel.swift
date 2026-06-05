@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 class ShopHomeViewModel: ObservableObject {
     
@@ -28,6 +29,7 @@ class ShopHomeViewModel: ObservableObject {
     
     private let productService: ProductService
     private let userService: UserService
+    private var cancellables = Set<AnyCancellable>()
     
     init(
         productService: ProductService = ProductService(),
@@ -41,17 +43,29 @@ class ShopHomeViewModel: ObservableObject {
     func loadData() async {
         isLoading = true
         errorMessage = nil
-        do {
-            async let fetchedProducts = productService.loadProducts()
-            async let fetchedUser = userService.loadCurrentUser()
-            
-            self.products = try await fetchedProducts
-            self.currentUser = try await fetchedUser
-        } catch {
-            errorMessage = "加载失败：\(error.localizedDescription)"
-            print("Load Data Error: \(error)")
+        
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            Publishers.Zip(
+                productService.loadProducts(),
+                userService.loadCurrentUser()
+            )
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    if case .failure(let error) = completion {
+                        self?.errorMessage = "加载失败：\(error.localizedDescription)"
+                        print("Load Data Error: \(error)")
+                    }
+                    self?.isLoading = false
+                    continuation.resume()
+                },
+                receiveValue: { [weak self] products, user in
+                    self?.products = products
+                    self?.currentUser = user
+                }
+            )
+            .store(in: &cancellables)
         }
-        isLoading = false
     }
     
     func updateCurrentUser(_ user: User) {

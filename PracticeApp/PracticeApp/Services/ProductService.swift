@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 struct ProductService {
     
@@ -15,8 +16,8 @@ struct ProductService {
         self.repository = repository
     }
     
-    func loadProducts() async throws -> [Product] {
-        try await repository.getProducts()
+    func loadProducts() -> AnyPublisher<[Product], Error> {
+        repository.getProducts()
     }
     
     func groupByBrand(_ products: [Product]) -> [BrandGroup] {
@@ -26,5 +27,27 @@ struct ProductService {
             BrandGroup(title: brand?.capitalized ?? noBrand, products: products)
         }
         return rows.sorted { $0.title != noBrand && $1.title == noBrand }
+    }
+}
+
+// MARK: - Async/await backward compatibility
+extension ProductService {
+    func loadProducts() async throws -> [Product] {
+        try await withCheckedThrowingContinuation { continuation in
+            var cancellable: AnyCancellable?
+            cancellable = loadProducts()
+                .sink(
+                    receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            continuation.resume(throwing: error)
+                        }
+                        _ = cancellable
+                    },
+                    receiveValue: { products in
+                        continuation.resume(returning: products)
+                        _ = cancellable
+                    }
+                )
+        }
     }
 }

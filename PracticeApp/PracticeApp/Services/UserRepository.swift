@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 struct UserRepository: UserRepositoryProtocol {
     private let baseURL: String
@@ -19,24 +20,129 @@ struct UserRepository: UserRepositoryProtocol {
         self.storage = storage
     }
     
-    func fetchUsers() async throws -> [User] {
+    func fetchUsers() -> AnyPublisher<[User], Error> {
         guard let url = URL(string: "\(baseURL)/users") else {
-            throw URLError(.badURL)
+            return Fail(error: URLError(.badURL)).eraseToAnyPublisher()
         }
-        let(data, _) = try await URLSession.shared.data(from: url)
-        let response = try JSONDecoder().decode(UserArray.self, from: data)
-        return response.users
+        return URLSession.shared.dataTaskPublisher(for: url)
+            .map(\.data)
+            .decode(type: UserArray.self, decoder: JSONDecoder())
+            .map(\.users)
+            .eraseToAnyPublisher()
+    }
+    
+    func saveUser(_ user: User) -> AnyPublisher<Void, Error> {
+        Future<Void, Error> { promise in
+            Task {
+                do {
+                    try await storage.save(user, forKey: StorageKey.currentUser)
+                    promise(.success(()))
+                } catch {
+                    promise(.failure(error))
+                }
+            }
+        }.eraseToAnyPublisher()
+    }
+    
+    func loadCurrentUser() -> AnyPublisher<User?, Error> {
+        Future<User?, Error> { promise in
+            Task {
+                do {
+                    let user = try await storage.load(User.self, forKey: StorageKey.currentUser)
+                    promise(.success(user))
+                } catch {
+                    promise(.failure(error))
+                }
+            }
+        }.eraseToAnyPublisher()
+    }
+    
+    func deleteCurrentUser() -> AnyPublisher<Void, Error> {
+        Future<Void, Error> { promise in
+            do {
+                try storage.deleteUser(forKey: StorageKey.currentUser)
+                promise(.success(()))
+            } catch {
+                promise(.failure(error))
+            }
+        }.eraseToAnyPublisher()
+    }
+}
+
+// MARK: - Async/await backward compatibility
+extension UserRepository {
+    func fetchUsers() async throws -> [User] {
+        try await withCheckedThrowingContinuation { continuation in
+            var cancellable: AnyCancellable?
+            cancellable = fetchUsers()
+                .sink(
+                    receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            continuation.resume(throwing: error)
+                        }
+                        _ = cancellable
+                    },
+                    receiveValue: { users in
+                        continuation.resume(returning: users)
+                        _ = cancellable
+                    }
+                )
+        }
     }
     
     func saveUser(_ user: User) async throws {
-        try await storage.save(user, forKey: StorageKey.currentUser)
+        _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            var cancellable: AnyCancellable?
+            cancellable = saveUser(user)
+                .sink(
+                    receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            continuation.resume(throwing: error)
+                        }
+                        _ = cancellable
+                    },
+                    receiveValue: {
+                        continuation.resume()
+                        _ = cancellable
+                    }
+                )
+        }
     }
     
     func loadCurrentUser() async throws -> User? {
-        try await storage.load(User.self, forKey: StorageKey.currentUser)
+        try await withCheckedThrowingContinuation { continuation in
+            var cancellable: AnyCancellable?
+            cancellable = loadCurrentUser()
+                .sink(
+                    receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            continuation.resume(throwing: error)
+                        }
+                        _ = cancellable
+                    },
+                    receiveValue: { user in
+                        continuation.resume(returning: user)
+                        _ = cancellable
+                    }
+                )
+        }
     }
     
     func deleteCurrentUser() throws {
-        try storage.deleteUser(forKey: StorageKey.currentUser)
+        var thrownError: Error?
+        var cancellable: AnyCancellable?
+        cancellable = deleteCurrentUser()
+            .sink(
+                receiveCompletion: { completion in
+                    if case .failure(let error) = completion {
+                        thrownError = error
+                    }
+                    _ = cancellable
+                },
+                receiveValue: { _ = cancellable }
+            )
+        if let error = thrownError {
+            throw error
+        }
     }
 }

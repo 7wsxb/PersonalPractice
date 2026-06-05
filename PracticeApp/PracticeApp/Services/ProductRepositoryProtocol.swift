@@ -6,7 +6,9 @@
 //
 
 import Foundation
+import Combine
 
 protocol ProductRepositoryProtocol {
     func getProducts() async throws -> [Product]
+    func getProducts() -> AnyPublisher<[Product], Error>
 }
