@@ -15,6 +15,6 @@ protocol UserRepositoryProtocol {
     func saveUser(_ user: User) -> AnyPublisher<Void, Error>
     func loadCurrentUser() async throws -> User?
     func loadCurrentUser() -> AnyPublisher<User?, Error>
-    func deleteCurrentUser() throws
+    func deleteCurrentUser() async throws
     func deleteCurrentUser() -> AnyPublisher<Void, Error>
 }

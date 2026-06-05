@@ -128,21 +128,22 @@ extension UserRepository {
         }
     }
     
-    func deleteCurrentUser() throws {
-        var thrownError: Error?
-        var cancellable: AnyCancellable?
-        cancellable = deleteCurrentUser()
-            .sink(
-                receiveCompletion: { completion in
-                    if case .failure(let error) = completion {
-                        thrownError = error
+    func deleteCurrentUser() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            var cancellable: AnyCancellable?
+            cancellable = deleteCurrentUser()
+                .sink(
+                    receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            continuation.resume(throwing: error)
+                        }
+                        _ = cancellable
+                    },
+                    receiveValue: {
+                        continuation.resume()
+                        _ = cancellable
                     }
-                    _ = cancellable
-                },
-                receiveValue: { _ = cancellable }
-            )
-        if let error = thrownError {
-            throw error
+                )
         }
     }
 }
