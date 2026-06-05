@@ -9,7 +9,9 @@ import SwiftUI
 import SDWebImage
 
 struct UserProfileView: View {
+    
     let avatarSize: CGFloat = 100
+    let user: User
 
     var body: some View {
         ZStack {
@@ -30,24 +32,21 @@ struct UserProfileView: View {
                                 .background(.shopDarkGary)
                                 .clipShape(Circle())
 
-                            Text("username")
-                                .font(.title2)
-                                .foregroundStyle(.shopLightGray)
-
-                            Text("aaaaaa\naaaaa\naaaaa\naaaaa")
-                                .font(.subheadline)
-                                .foregroundStyle(.shopGary)
+                            Text(user.username)
+                            Text(user.firstName + " " + user.lastName)
+                            Text(user.email)
                         }
+                        .font(.title)
+                        .foregroundStyle(.shopLightGray)
                         .alignmentGuide(VerticalAlignment.center) { d in
                             avatarSize / 2
                         }
                     }
-
                 }
             }
         }
     }
 }
-#Preview {
-    UserProfileView()
-}
+//#Preview {
+//    UserProfileView()
+//}

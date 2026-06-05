@@ -10,6 +10,7 @@ import Foundation
 class UserProfileViewModel: ObservableObject {
     
     @Published var user: User
+    
     var onUserUpdated: ((User) -> Void)?
     
     init(user: User, onUserUpdated: ((User) -> Void)? = nil) {

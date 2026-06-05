@@ -9,12 +9,13 @@ import SwiftUI
 
 struct HotProductView: View {
     
-    @StateObject var vm = HotProductViewModel()
-            
+    let products: [Product]
+    @StateObject private var vm = HotProductViewModel()
+    
     var body: some View {
         VStack(spacing: 16) {
             HStack {
-                ImageLoaderView(imageURL: vm.currentProduct?.images[0] ?? Constants.randomImage)
+                ImageLoaderView(imageURL: vm.currentImageURL)
                     .frame(width: 55, height: 55)
                     .background(.shopGary)
                     .clipShape(Circle())
@@ -41,7 +42,7 @@ struct HotProductView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             
             HStack {
-                ImageLoaderView(imageURL: vm.currentProduct?.images[vm.currentImageIndex] ?? Constants.randomImage)
+                ImageLoaderView(imageURL: vm.currentImageURL)
                     .frame(width: 150, height: 150)
                     .background(.shopWhite.opacity(0.2))
                     .cornerRadius(10)
@@ -67,7 +68,7 @@ struct HotProductView: View {
                                     vm.switchToNextImage()
                                 }
                         }
-                        .foregroundStyle(product.images.count > 1 ? Color.shopLightGray : Color.shopGary)
+                        .foregroundStyle(vm.hasMultipleImages ? Color.shopLightGray : Color.shopGary)
                         HStack {
                             Text("next product:")
                             Spacer()
@@ -87,12 +88,11 @@ struct HotProductView: View {
             .themeColor(isSelected: false)
             .cornerRadius(10)
         }
-        .task {
-            do {
-                vm.products = try await ProductService().loadProducts()
-            }catch {
-                print(error)
-            }
+        .onAppear {
+            vm.configure(with: products)
+        }
+        .onChange(of: products) { _, newProducts in
+            vm.configure(with: newProducts)
         }
     }
 }
@@ -100,7 +100,5 @@ struct HotProductView: View {
 #Preview {
     ZStack {
         Color.shopBlack.edgesIgnoringSafeArea(.all)
-        
-//        HotProductView()
     }
 }

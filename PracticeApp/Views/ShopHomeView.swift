@@ -28,7 +28,7 @@ struct ShopHomeView: View {
                 LazyVStack(spacing: 20, pinnedViews: [.sectionHeaders], content: {
                     Section{
                         RecentView(products: vm.products)
-                        HotProductView()
+                        HotProductView(products: vm.products)
                         BrandShowView(productBrands: vm.filterBrand, imageSize: 120)
                     }header: {
                         CategoryView(selectedCategories: $vm.selectedCategory, userImageURL: vm.currentUser?.image, hasProducts: !vm.products.isEmpty)
